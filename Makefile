@@ -18,7 +18,7 @@
 # Release:  release/xshot-<version>-<arch>.zip
 # ---------------------------------------------------------------------
 
-VERSION  = 1.0
+VERSION  = 1.0.1
 NAME     = xshot
 SRC      = src/xshot.c
 

@@ -27,9 +27,9 @@
 /* Einstellungen                                                       */
 /* ------------------------------------------------------------------ */
 #ifndef XSHOT_VERSION
-#define XSHOT_VERSION "1.0"      /* vom Makefile per -DXSHOT_VERSION=... gesetzt */
+#define XSHOT_VERSION "1.0.1"      /* vom Makefile per -DXSHOT_VERSION=... gesetzt */
 #endif
-#define MENU_TEXT   "X-Shot"
+#define MENU_TEXT   " X-Shot"
 #define DELAY_MS    300          /* Wartezeit, bis Desktop neu gezeichnet ist */
 #define BANDBYTES   32768L       /* Groesse des Zwischenpuffers beim Grab   */
 
