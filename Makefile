@@ -63,7 +63,7 @@ newtos: $(NEWTOS_OUT)
 
 $(NEWTOS_OUT): $(SRC) Makefile
 	@mkdir -p dist/newtos
-	$(NEWTOS_CC) -Wall -nap -o $(NEWTOS_OUT) $(SRC)
+	$(NEWTOS_CC) -Wall -nac -o $(NEWTOS_OUT) $(SRC)
 
 info:
 	@$(CC) --version | head -n 1

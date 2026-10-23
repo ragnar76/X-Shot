@@ -1165,8 +1165,7 @@ static void open_window(void)
         form_alert(1, "[3][Kein Fenster mehr frei!][Abbruch]");
         return;
     }
-    wind_set(win, WIN_NAME, (short)((long)winname >> 16),
-             (short)((long)winname & 0xFFFF), 0, 0);
+    wind_set_str(win, WIN_NAME, winname);
     wind_open(win, bx, by, bw, bh);
     place_tree();
 }
@@ -1183,11 +1182,91 @@ static void close_window(void)
 /* ================================================================== */
 /*  Aktionen                                                            */
 /* ================================================================== */
+/*  Speicher-Check vor der Aufnahme                                     */
+/* ================================================================== */
+
+/* Bedarf in Bytes: Bildpuffer + Band-Puffer(n) wie in grab(), plus etwas Reserve */
+static long mem_needed(short w, short h, short planes)
+{
+    int   tc = (planes > 8);
+    short mp = (planes == 15) ? 16 : planes;
+    short wdw = (w + 15) >> 4;
+    long  rowbytes = (long)wdw * 2 * mp;
+    long  bh = BANDBYTES / rowbytes;
+    long  image = IMG_PRE + (long)h * ((long)w * (tc ? 3 : 1) + 1) + IMG_POST;
+
+    if (bh < 1) bh = 1;
+    if (bh > h) bh = h;
+    return image + bh * rowbytes * (tc ? 1 : 2) + 16384L;
+}
+
+/* groesster freier zusammenhaengender Block (ST-RAM oder Alternate RAM);
+ * -1 = unbekannt, dann wird nicht vorab geprueft */
+static long mem_avail(void)
+{
+    long a = (long)Mxalloc(-1L, 0);         /* ST-RAM                 */
+    long b = (long)Mxalloc(-1L, 1);         /* Alternate-/TT-RAM      */
+    long best = 0;
+
+    if (a > best) best = a;
+    if (b > best) best = b;
+    if (best <= 0) {                        /* TOS ohne Mxalloc */
+        a = (long)Malloc(-1L);
+        if (a > best) best = a;
+    }
+    return (best > 0) ? best : -1L;
+}
+
+static char *put_long(char *d, long v)
+{
+    char t[12];
+    int n = 0;
+
+    if (v <= 0) t[n++] = '0';
+    while (v > 0) { t[n++] = (char)('0' + v % 10); v /= 10; }
+    while (n > 0) *d++ = t[--n];
+    return d;
+}
+
+/* "6.2 MB" bzw. "640 KB" */
+static char *put_size(char *d, long bytes)
+{
+    long kb = (bytes + 512) >> 10;
+
+    if (kb >= 1024) {
+        long t = (kb * 10 + 512) >> 10;     /* MB mit einer Nachkommastelle */
+        d = put_long(d, t / 10);
+        *d++ = '.';
+        *d++ = (char)('0' + t % 10);
+        strcpy(d, " MB");
+    } else {
+        d = put_long(d, kb);
+        strcpy(d, " KB");
+    }
+    return d + strlen(d);
+}
+
+static void alert_lowmem(long need, long avail)
+{
+    char msg[160], *p = msg;
+
+    strcpy(p, "[3][Zu wenig Speicher!|Ben\224tigt: ");
+    p += strlen(p);
+    p = put_size(p, need);
+    strcpy(p, "|Frei:     ");
+    p += strlen(p);
+    p = put_size(p, avail);
+    strcpy(p, "|Tipp: Kleineren Bereich|w\204hlen.][Abbruch]");
+    form_alert(1, msg);
+}
+
+/* ================================================================== */
 static void do_capture(int mode)          /* 0 = ganz, 1 = Bereich, 2 = Fenster */
 {
     short vh, wi[11], wo[57], ext[57], dummy, i;
     short rx = 0, ry = 0, rw, rh, sw, sh, planes;
-    int ok = 1, got = 0;
+    int ok = 1, got = 0, lowmem = 0;
+    long need = 0, avail = 0;
 
     close_window();
     delay_ms(DELAY_MS);               /* Desktop soll sich neu zeichnen */
@@ -1215,6 +1294,15 @@ static void do_capture(int mode)          /* 0 = ganz, 1 = Bereich, 2 = Fenster 
     else if (mode == 2)
         ok = select_window(vh, sw, sh, &rx, &ry, &rw, &rh);
 
+    if (ok) {                         /* reicht der Speicher? */
+        need = mem_needed(rw, rh, planes);
+        avail = mem_avail();
+        if (avail >= 0 && avail < need) {
+            lowmem = 1;
+            ok = 0;
+        }
+    }
+
     if (ok) {
         graf_mouse(MOUSE_OFF, 0);     /* Mauszeiger nicht mitfotografieren */
         got = grab(vh, rx, ry, rw, rh, planes, &img);
@@ -1225,12 +1313,14 @@ static void do_capture(int mode)          /* 0 = ganz, 1 = Bereich, 2 = Fenster 
     wind_update(MC_END);
     wind_update(WU_END);
 
-    if (mode && !ok)                  /* Abbruch: Bildschirm neu zeichnen lassen */
+    if (mode && !ok && !lowmem)       /* Abbruch: Bildschirm neu zeichnen lassen */
         form_dial(3, 0, 0, 0, 0, 0, 0, sw, sh);   /* 3 = FMD_FINISH */
 
     v_clsvwk(vh);
 
-    if (ok && !got)
+    if (lowmem)
+        alert_lowmem(need, avail);
+    else if (ok && !got)
         form_alert(1, "[3][Zu wenig Speicher!][Abbruch]");
     if (got && img.tc && g_cal_failed)
         form_alert(1, "[1][Farbformat nicht erkannt.|Standardannahme wird benutzt,|die Farben k\224nnen abweichen.][ OK ]");
